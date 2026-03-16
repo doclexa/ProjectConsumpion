@@ -1,0 +1,597 @@
+
+========== 1. ЗАГРУЗКА ДАННЫХ ==========
+
+Загружен document.csv (кодировка: cp1251 )
+Размер выборки: n = 266 
+
+
+========== 2. ОПИСАТЕЛЬНАЯ СТАТИСТИКА ==========
+
+--- Частоты: Сортировка отходов (2.1) ---
+
+Иногда (несколько раз в месяц)                        Никогда 
+                            42                             93 
+       Постоянно (каждый день)    Редко (несколько раз в год) 
+                            40                             76 
+Часто (несколько раз в неделю) 
+                            15 
+
+--- Частоты: Поиск эко-товаров (2.2) ---
+
+   Иногда   Никогда Постоянно     Редко     Часто 
+       40       139         8        57        22 
+
+--- Частоты: Экономия воды/электричества (2.3) ---
+
+   Иногда   Никогда Постоянно     Редко     Часто 
+       37        18       110        22        79 
+
+--- Распределение по возрасту ---
+
+18-22 года  23-28 лет  29-35 лет        35+ 
+       108        103         20         35 
+
+--- Кросс-табуляция: Сортировка x Возраст ---
+            
+             Иногда (несколько раз в месяц) Никогда Постоянно (каждый день)
+  18-22 года                             18      35                      11
+  23-28 лет                              12      36                      18
+  29-35 лет                               5       6                       5
+  35+                                     7      16                       6
+  Sum                                    42      93                      40
+            
+             Редко (несколько раз в год) Часто (несколько раз в неделю) Sum
+  18-22 года                          37                              7 108
+  23-28 лет                           30                              7 103
+  29-35 лет                            4                              0  20
+  35+                                  5                              1  35
+  Sum                                 76                             15 266
+
+--- Кросс-табуляция: Сортировка x Доход ---
+                                                                        
+                                                                         Иногда (несколько раз в месяц)
+  Денег не хватает на базовый рацион еды                                                              1
+  Живем комфортно, почти на все хватает                                                              19
+  Можем позволить себе всё, что захотим                                                               2
+  Можем позволить себе одежду, но не можем позволить себе дорогие товары                             17
+  Хватает на еду, но не на одежду                                                                     3
+                                                                        
+                                                                         Никогда
+  Денег не хватает на базовый рацион еды                                       1
+  Живем комфортно, почти на все хватает                                       42
+  Можем позволить себе всё, что захотим                                        4
+  Можем позволить себе одежду, но не можем позволить себе дорогие товары      41
+  Хватает на еду, но не на одежду                                              5
+                                                                        
+                                                                         Постоянно (каждый день)
+  Денег не хватает на базовый рацион еды                                                       1
+  Живем комфортно, почти на все хватает                                                       20
+  Можем позволить себе всё, что захотим                                                        3
+  Можем позволить себе одежду, но не можем позволить себе дорогие товары                      12
+  Хватает на еду, но не на одежду                                                              4
+                                                                        
+                                                                         Редко (несколько раз в год)
+  Денег не хватает на базовый рацион еды                                                           1
+  Живем комфортно, почти на все хватает                                                           39
+  Можем позволить себе всё, что захотим                                                            4
+  Можем позволить себе одежду, но не можем позволить себе дорогие товары                          32
+  Хватает на еду, но не на одежду                                                                  0
+                                                                        
+                                                                         Часто (несколько раз в неделю)
+  Денег не хватает на базовый рацион еды                                                              0
+  Живем комфортно, почти на все хватает                                                               5
+  Можем позволить себе всё, что захотим                                                               0
+  Можем позволить себе одежду, но не можем позволить себе дорогие товары                              8
+  Хватает на еду, но не на одежду                                                                     2
+
+--- Кросс-табуляция: Сортировка x Образование ---
+                                    
+                                     Иногда (несколько раз в месяц) Никогда
+  Высшее (бакалавриат)                                           20      38
+  Высшее (магистратура, аспирантура)                              8      33
+  Среднее специальное (СПО, колледж)                             10      12
+  Школа                                                           4      10
+                                    
+                                     Постоянно (каждый день)
+  Высшее (бакалавриат)                                    16
+  Высшее (магистратура, аспирантура)                      21
+  Среднее специальное (СПО, колледж)                       0
+  Школа                                                    3
+                                    
+                                     Редко (несколько раз в год)
+  Высшее (бакалавриат)                                        37
+  Высшее (магистратура, аспирантура)                          19
+  Среднее специальное (СПО, колледж)                           9
+  Школа                                                       11
+                                    
+                                     Часто (несколько раз в неделю)
+  Высшее (бакалавриат)                                            8
+  Высшее (магистратура, аспирантура)                              3
+  Среднее специальное (СПО, колледж)                              0
+  Школа                                                           4
+null device 
+          1 
+null device 
+          1 
+
+
+========== 3. СТАТИСТИЧЕСКИЕ ТЕСТЫ ==========
+
+--- Хи-квадрат: Возраст x Сортировка ---
+
+	Pearson's Chi-squared test
+
+data:  t1
+X-squared = 13.896, df = 12, p-value = 0.3074
+
+
+--- Хи-квадрат: Доход x Сортировка ---
+
+	Pearson's Chi-squared test
+
+data:  t2
+X-squared = 13.084, df = 16, p-value = 0.6666
+
+
+--- Хи-квадрат: Образование x Сортировка ---
+
+	Pearson's Chi-squared test
+
+data:  t3
+X-squared = 26.801, df = 12, p-value = 0.008252
+
+
+--- U-критерий Манна–Уитни: Зумеры vs Миллениалы ---
+Сортировка (2.1): W = 6943 , p = 0.5379944 
+Эко-товары (2.2): W = 6694 , p = 0.9111241 
+Экономия (2.3): W = 6334.5 , p = 0.5238327 
+
+
+========== 4. ИНДЕКС УСТОЙЧИВОГО ПОВЕДЕНИЯ ==========
+
+Описательная статистика индекса (диапазон 3–15):
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  3.000   6.000   8.000   8.162  10.000  15.000 
+SD = 2.57 , N = 266 
+null device 
+          1 
+null device 
+          1 
+
+
+========== 5. ПРЕДИКТОРЫ ==========
+
+
+
+========== 6. МНОЖЕСТВЕННАЯ РЕГРЕССИЯ ==========
+
+
+Call:
+lm(formula = sustainable_index ~ q3_1_led + q3_2_agree + q3_3_willing + 
+    q4_1_num + q4_2_num + q4_3_num + income_f + education_f + 
+    barrier_infra + barrier_lazy + barrier_unbelief + barrier_inconvenient + 
+    barrier_expense, data = df, na.action = na.exclude)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-5.0813 -1.1525 -0.1613  1.3088  5.0704 
+
+Coefficients:
+                                                                                Estimate
+(Intercept)                                                                     5.760623
+q3_1_led                                                                        0.480381
+q3_2_agree                                                                     -0.509128
+q3_3_willing                                                                    0.539077
+q4_1_num                                                                        1.104995
+q4_2_num                                                                        0.691961
+q4_3_num                                                                       -0.007091
+income_fЖивем комфортно, почти на все хватает                                  -2.088563
+income_fМожем позволить себе всё, что захотим                                  -2.394789
+income_fМожем позволить себе одежду, но не можем позволить себе дорогие товары -1.979399
+income_fХватает на еду, но не на одежду                                        -1.265621
+education_fВысшее (магистратура, аспирантура)                                   0.069455
+education_fСреднее специальное (СПО, колледж)                                  -0.741243
+education_fШкола                                                               -0.037873
+barrier_infra                                                                  -0.178443
+barrier_lazy                                                                   -0.402202
+barrier_unbelief                                                               -0.740142
+barrier_inconvenient                                                           -0.724938
+barrier_expense                                                                -0.349281
+                                                                               Std. Error
+(Intercept)                                                                      1.279480
+q3_1_led                                                                         0.328318
+q3_2_agree                                                                       0.281280
+q3_3_willing                                                                     0.246640
+q4_1_num                                                                         0.147778
+q4_2_num                                                                         0.117920
+q4_3_num                                                                         0.121513
+income_fЖивем комфортно, почти на все хватает                                    1.070198
+income_fМожем позволить себе всё, что захотим                                    1.176943
+income_fМожем позволить себе одежду, но не можем позволить себе дорогие товары   1.053726
+income_fХватает на еду, но не на одежду                                          1.160380
+education_fВысшее (магистратура, аспирантура)                                    0.280875
+education_fСреднее специальное (СПО, колледж)                                    0.418658
+education_fШкола                                                                 0.398543
+barrier_infra                                                                    0.268156
+barrier_lazy                                                                     0.268849
+barrier_unbelief                                                                 0.285870
+barrier_inconvenient                                                             0.260625
+barrier_expense                                                                  0.328622
+                                                                               t value
+(Intercept)                                                                      4.502
+q3_1_led                                                                         1.463
+q3_2_agree                                                                      -1.810
+q3_3_willing                                                                     2.186
+q4_1_num                                                                         7.477
+q4_2_num                                                                         5.868
+q4_3_num                                                                        -0.058
+income_fЖивем комфортно, почти на все хватает                                   -1.952
+income_fМожем позволить себе всё, что захотим                                   -2.035
+income_fМожем позволить себе одежду, но не можем позволить себе дорогие товары  -1.878
+income_fХватает на еду, но не на одежду                                         -1.091
+education_fВысшее (магистратура, аспирантура)                                    0.247
+education_fСреднее специальное (СПО, колледж)                                   -1.771
+education_fШкола                                                                -0.095
+barrier_infra                                                                   -0.665
+barrier_lazy                                                                    -1.496
+barrier_unbelief                                                                -2.589
+barrier_inconvenient                                                            -2.782
+barrier_expense                                                                 -1.063
+                                                                               Pr(>|t|)
+(Intercept)                                                                    1.04e-05
+q3_1_led                                                                        0.14470
+q3_2_agree                                                                      0.07151
+q3_3_willing                                                                    0.02978
+q4_1_num                                                                       1.32e-12
+q4_2_num                                                                       1.41e-08
+q4_3_num                                                                        0.95351
+income_fЖивем комфортно, почти на все хватает                                   0.05212
+income_fМожем позволить себе всё, что захотим                                   0.04294
+income_fМожем позволить себе одежду, но не можем позволить себе дорогие товары  0.06149
+income_fХватает на еду, но не на одежду                                         0.27647
+education_fВысшее (магистратура, аспирантура)                                   0.80490
+education_fСреднее специальное (СПО, колледж)                                   0.07787
+education_fШкола                                                                0.92437
+barrier_infra                                                                   0.50639
+barrier_lazy                                                                    0.13593
+barrier_unbelief                                                                0.01019
+barrier_inconvenient                                                            0.00583
+barrier_expense                                                                 0.28888
+                                                                                  
+(Intercept)                                                                    ***
+q3_1_led                                                                          
+q3_2_agree                                                                     .  
+q3_3_willing                                                                   *  
+q4_1_num                                                                       ***
+q4_2_num                                                                       ***
+q4_3_num                                                                          
+income_fЖивем комфортно, почти на все хватает                                  .  
+income_fМожем позволить себе всё, что захотим                                  *  
+income_fМожем позволить себе одежду, но не можем позволить себе дорогие товары .  
+income_fХватает на еду, но не на одежду                                           
+education_fВысшее (магистратура, аспирантура)                                     
+education_fСреднее специальное (СПО, колледж)                                  .  
+education_fШкола                                                                  
+barrier_infra                                                                     
+barrier_lazy                                                                      
+barrier_unbelief                                                               *  
+barrier_inconvenient                                                           ** 
+barrier_expense                                                                   
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Residual standard error: 1.939 on 247 degrees of freedom
+Multiple R-squared:  0.4712,	Adjusted R-squared:  0.4327 
+F-statistic: 12.23 on 18 and 247 DF,  p-value: < 2.2e-16
+
+null device 
+          1 
+
+
+========== 7. СРАВНИТЕЛЬНЫЙ АНАЛИЗ ПОКОЛЕНИЙ ==========
+
+--- Регрессия: ЗУМЕРЫ ---
+
+Call:
+lm(formula = sustainable_index ~ q4_1_num + q4_2_num + q4_3_num + 
+    barrier_infra + barrier_lazy + barrier_unbelief + barrier_inconvenient + 
+    barrier_expense + income_f, data = df_zoom, na.action = na.exclude)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-3.6839 -1.1435 -0.3559  1.3977  3.4572 
+
+Coefficients:
+                                                                               Estimate
+(Intercept)                                                                      3.8494
+q4_1_num                                                                         1.1977
+q4_2_num                                                                         0.7527
+q4_3_num                                                                         0.1188
+barrier_infra                                                                   -0.2237
+barrier_lazy                                                                    -0.2041
+barrier_unbelief                                                                -0.8071
+barrier_inconvenient                                                            -0.2546
+barrier_expense                                                                 -0.5071
+income_fЖивем комфортно, почти на все хватает                                   -0.5524
+income_fМожем позволить себе всё, что захотим                                   -0.6587
+income_fМожем позволить себе одежду, но не можем позволить себе дорогие товары  -0.5379
+income_fХватает на еду, но не на одежду                                         -0.2296
+                                                                               Std. Error
+(Intercept)                                                                        1.3511
+q4_1_num                                                                           0.2131
+q4_2_num                                                                           0.1646
+q4_3_num                                                                           0.1685
+barrier_infra                                                                      0.4033
+barrier_lazy                                                                       0.3860
+barrier_unbelief                                                                   0.3974
+barrier_inconvenient                                                               0.3591
+barrier_expense                                                                    0.4176
+income_fЖивем комфортно, почти на все хватает                                      1.0568
+income_fМожем позволить себе всё, что захотим                                      1.1716
+income_fМожем позволить себе одежду, но не можем позволить себе дорогие товары     1.0429
+income_fХватает на еду, но не на одежду                                            1.3209
+                                                                               t value
+(Intercept)                                                                      2.849
+q4_1_num                                                                         5.621
+q4_2_num                                                                         4.571
+q4_3_num                                                                         0.705
+barrier_infra                                                                   -0.555
+barrier_lazy                                                                    -0.529
+barrier_unbelief                                                                -2.031
+barrier_inconvenient                                                            -0.709
+barrier_expense                                                                 -1.214
+income_fЖивем комфортно, почти на все хватает                                   -0.523
+income_fМожем позволить себе всё, что захотим                                   -0.562
+income_fМожем позволить себе одежду, но не можем позволить себе дорогие товары  -0.516
+income_fХватает на еду, но не на одежду                                         -0.174
+                                                                               Pr(>|t|)
+(Intercept)                                                                     0.00538
+q4_1_num                                                                       1.89e-07
+q4_2_num                                                                       1.46e-05
+q4_3_num                                                                        0.48254
+barrier_infra                                                                   0.58030
+barrier_lazy                                                                    0.59828
+barrier_unbelief                                                                0.04502
+barrier_inconvenient                                                            0.48010
+barrier_expense                                                                 0.22766
+income_fЖивем комфортно, почти на все хватает                                   0.60239
+income_fМожем позволить себе всё, что захотим                                   0.57528
+income_fМожем позволить себе одежду, но не можем позволить себе дорогие товары  0.60722
+income_fХватает на еду, но не на одежду                                         0.86238
+                                                                                  
+(Intercept)                                                                    ** 
+q4_1_num                                                                       ***
+q4_2_num                                                                       ***
+q4_3_num                                                                          
+barrier_infra                                                                     
+barrier_lazy                                                                      
+barrier_unbelief                                                               *  
+barrier_inconvenient                                                              
+barrier_expense                                                                   
+income_fЖивем комфортно, почти на все хватает                                     
+income_fМожем позволить себе всё, что захотим                                     
+income_fМожем позволить себе одежду, но не можем позволить себе дорогие товары    
+income_fХватает на еду, но не на одежду                                           
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Residual standard error: 1.685 on 95 degrees of freedom
+Multiple R-squared:  0.5592,	Adjusted R-squared:  0.5035 
+F-statistic: 10.04 on 12 and 95 DF,  p-value: 2.059e-12
+
+
+--- Регрессия: МИЛЛЕНИАЛЫ ---
+
+Call:
+lm(formula = sustainable_index ~ q4_1_num + q4_2_num + q4_3_num + 
+    barrier_infra + barrier_lazy + barrier_unbelief + barrier_inconvenient + 
+    barrier_expense + income_f, data = df_mill, na.action = na.exclude)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-5.2733 -1.2386 -0.1334  1.2722  4.7534 
+
+Coefficients:
+                                                                               Estimate
+(Intercept)                                                                     3.68284
+q4_1_num                                                                        1.31562
+q4_2_num                                                                        0.82001
+q4_3_num                                                                       -0.16755
+barrier_infra                                                                  -0.13384
+barrier_lazy                                                                   -0.24329
+barrier_unbelief                                                               -0.66659
+barrier_inconvenient                                                           -1.34431
+barrier_expense                                                                -0.51447
+income_fМожем позволить себе всё, что захотим                                  -1.60488
+income_fМожем позволить себе одежду, но не можем позволить себе дорогие товары  0.02243
+income_fХватает на еду, но не на одежду                                         1.28266
+                                                                               Std. Error
+(Intercept)                                                                       1.05448
+q4_1_num                                                                          0.24409
+q4_2_num                                                                          0.18226
+q4_3_num                                                                          0.20504
+barrier_infra                                                                     0.43064
+barrier_lazy                                                                      0.42519
+barrier_unbelief                                                                  0.48392
+barrier_inconvenient                                                              0.46029
+barrier_expense                                                                   0.66914
+income_fМожем позволить себе всё, что захотим                                     1.34140
+income_fМожем позволить себе одежду, но не можем позволить себе дорогие товары    0.42071
+income_fХватает на еду, но не на одежду                                           1.02942
+                                                                               t value
+(Intercept)                                                                      3.493
+q4_1_num                                                                         5.390
+q4_2_num                                                                         4.499
+q4_3_num                                                                        -0.817
+barrier_infra                                                                   -0.311
+barrier_lazy                                                                    -0.572
+barrier_unbelief                                                                -1.377
+barrier_inconvenient                                                            -2.921
+barrier_expense                                                                 -0.769
+income_fМожем позволить себе всё, что захотим                                   -1.196
+income_fМожем позволить себе одежду, но не можем позволить себе дорогие товары   0.053
+income_fХватает на еду, но не на одежду                                          1.246
+                                                                               Pr(>|t|)
+(Intercept)                                                                    0.000688
+q4_1_num                                                                       4.01e-07
+q4_2_num                                                                       1.69e-05
+q4_3_num                                                                       0.415585
+barrier_infra                                                                  0.756540
+barrier_lazy                                                                   0.568354
+barrier_unbelief                                                               0.171131
+barrier_inconvenient                                                           0.004232
+barrier_expense                                                                0.443610
+income_fМожем позволить себе всё, что захотим                                  0.234083
+income_fМожем позволить себе одежду, но не можем позволить себе дорогие товары 0.957585
+income_fХватает на еду, но не на одежду                                        0.215386
+                                                                                  
+(Intercept)                                                                    ***
+q4_1_num                                                                       ***
+q4_2_num                                                                       ***
+q4_3_num                                                                          
+barrier_infra                                                                     
+barrier_lazy                                                                      
+barrier_unbelief                                                                  
+barrier_inconvenient                                                           ** 
+barrier_expense                                                                   
+income_fМожем позволить себе всё, что захотим                                     
+income_fМожем позволить себе одежду, но не можем позволить себе дорогие товары    
+income_fХватает на еду, но не на одежду                                           
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Residual standard error: 2.15 on 111 degrees of freedom
+Multiple R-squared:  0.445,	Adjusted R-squared:   0.39 
+F-statistic:  8.09 on 11 and 111 DF,  p-value: 3.13e-10
+
+
+--- Модель с взаимодействиями ---
+
+Call:
+lm(formula = sustainable_index ~ generation * (barrier_infra + 
+    barrier_lazy + barrier_unbelief + barrier_inconvenient + 
+    barrier_expense) + q4_1_num + q4_2_num + q4_3_num + income_f, 
+    data = df_gen, na.action = na.exclude)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-5.3599 -1.2765 -0.2772  1.3955  5.0543 
+
+Coefficients:
+                                                                                Estimate
+(Intercept)                                                                     3.933095
+generationzoom                                                                 -0.120589
+barrier_infra                                                                  -0.041686
+barrier_lazy                                                                   -0.317443
+barrier_unbelief                                                               -0.680868
+barrier_inconvenient                                                           -1.232937
+barrier_expense                                                                -0.389317
+q4_1_num                                                                        1.260484
+q4_2_num                                                                        0.797282
+q4_3_num                                                                       -0.003694
+income_fЖивем комфортно, почти на все хватает                                  -0.491033
+income_fМожем позволить себе всё, что захотим                                  -0.941584
+income_fМожем позволить себе одежду, но не можем позволить себе дорогие товары -0.462348
+income_fХватает на еду, но не на одежду                                         0.277421
+generationzoom:barrier_infra                                                   -0.200293
+generationzoom:barrier_lazy                                                     0.119851
+generationzoom:barrier_unbelief                                                -0.100602
+generationzoom:barrier_inconvenient                                             0.996408
+generationzoom:barrier_expense                                                 -0.168644
+                                                                               Std. Error
+(Intercept)                                                                      1.349759
+generationzoom                                                                   0.535948
+barrier_infra                                                                    0.380528
+barrier_lazy                                                                     0.377349
+barrier_unbelief                                                                 0.421652
+barrier_inconvenient                                                             0.406626
+barrier_expense                                                                  0.580504
+q4_1_num                                                                         0.160966
+q4_2_num                                                                         0.121622
+q4_3_num                                                                         0.130104
+income_fЖивем комфортно, почти на все хватает                                    1.185545
+income_fМожем позволить себе всё, что захотим                                    1.297158
+income_fМожем позволить себе одежду, но не можем позволить себе дорогие товары   1.179053
+income_fХватает на еду, но не на одежду                                          1.330160
+generationzoom:barrier_infra                                                     0.571340
+generationzoom:barrier_lazy                                                      0.572876
+generationzoom:barrier_unbelief                                                  0.600356
+generationzoom:barrier_inconvenient                                              0.576377
+generationzoom:barrier_expense                                                   0.716498
+                                                                               t value
+(Intercept)                                                                      2.914
+generationzoom                                                                  -0.225
+barrier_infra                                                                   -0.110
+barrier_lazy                                                                    -0.841
+barrier_unbelief                                                                -1.615
+barrier_inconvenient                                                            -3.032
+barrier_expense                                                                 -0.671
+q4_1_num                                                                         7.831
+q4_2_num                                                                         6.555
+q4_3_num                                                                        -0.028
+income_fЖивем комфортно, почти на все хватает                                   -0.414
+income_fМожем позволить себе всё, что захотим                                   -0.726
+income_fМожем позволить себе одежду, но не можем позволить себе дорогие товары  -0.392
+income_fХватает на еду, но не на одежду                                          0.209
+generationzoom:barrier_infra                                                    -0.351
+generationzoom:barrier_lazy                                                      0.209
+generationzoom:barrier_unbelief                                                 -0.168
+generationzoom:barrier_inconvenient                                              1.729
+generationzoom:barrier_expense                                                  -0.235
+                                                                               Pr(>|t|)
+(Intercept)                                                                     0.00395
+generationzoom                                                                  0.82219
+barrier_infra                                                                   0.91287
+barrier_lazy                                                                    0.40116
+barrier_unbelief                                                                0.10785
+barrier_inconvenient                                                            0.00273
+barrier_expense                                                                 0.50317
+q4_1_num                                                                       2.29e-13
+q4_2_num                                                                       4.15e-10
+q4_3_num                                                                        0.97738
+income_fЖивем комфортно, почти на все хватает                                   0.67916
+income_fМожем позволить себе всё, что захотим                                   0.46871
+income_fМожем позволить себе одежду, но не можем позволить себе дорогие товары  0.69535
+income_fХватает на еду, но не на одежду                                         0.83499
+generationzoom:barrier_infra                                                    0.72626
+generationzoom:barrier_lazy                                                     0.83449
+generationzoom:barrier_unbelief                                                 0.86708
+generationzoom:barrier_inconvenient                                             0.08531
+generationzoom:barrier_expense                                                  0.81415
+                                                                                  
+(Intercept)                                                                    ** 
+generationzoom                                                                    
+barrier_infra                                                                     
+barrier_lazy                                                                      
+barrier_unbelief                                                                  
+barrier_inconvenient                                                           ** 
+barrier_expense                                                                   
+q4_1_num                                                                       ***
+q4_2_num                                                                       ***
+q4_3_num                                                                          
+income_fЖивем комфортно, почти на все хватает                                     
+income_fМожем позволить себе всё, что захотим                                     
+income_fМожем позволить себе одежду, но не можем позволить себе дорогие товары    
+income_fХватает на еду, но не на одежду                                           
+generationzoom:barrier_infra                                                      
+generationzoom:barrier_lazy                                                       
+generationzoom:barrier_unbelief                                                   
+generationzoom:barrier_inconvenient                                            .  
+generationzoom:barrier_expense                                                    
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Residual standard error: 1.934 on 212 degrees of freedom
+Multiple R-squared:  0.4841,	Adjusted R-squared:  0.4403 
+F-statistic: 11.05 on 18 and 212 DF,  p-value: < 2.2e-16
+
+null device 
+          1 
+
+
+========== ИТОГИ ==========
+
+Выборка: n = 266 
+Индекс: M = 8.16 , SD = 2.57 
+R² модели: 0.471 
+Графики сохранены в plots/

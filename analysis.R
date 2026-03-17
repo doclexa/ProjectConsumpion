@@ -21,31 +21,29 @@ sink("results_summary.txt", split = TRUE)
 cat("\n========== 1. ЗАГРУЗКА ДАННЫХ ==========\n\n")
 
 load_data <- function() {
-  if (file.exists("document.csv")) {
-    # Кодировка: cp1251 типична для русского Windows, UTF-8 — для экспортов
+  if (file.exists("document_original.csv")) {
     encodings <- c("cp1251", "UTF-8", "latin1")
     df_raw <- NULL
     for (enc in encodings) {
       df_raw <- tryCatch({
-        read.csv2("document.csv", sep = ";", dec = ",", quote = "\"",
+        read.csv2("document_original.csv", sep = ";", dec = ",", quote = "\"",
                   skip = 2, header = FALSE, fill = TRUE,
                   fileEncoding = enc, stringsAsFactors = FALSE,
                   na.strings = c("", "NA"), strip.white = TRUE)
       }, error = function(e) NULL)
       if (!is.null(df_raw) && nrow(df_raw) > 0) {
-        cat("Загружен document.csv (кодировка:", enc, ")\n")
+        cat("Загружен document_original.csv (кодировка:", enc, ")\n")
         return(df_raw)
       }
     }
-    # Без указания кодировки (системная по умолчанию)
     df_raw <- tryCatch({
-      read.csv2("document.csv", sep = ";", dec = ",", quote = "\"",
+      read.csv2("document_original.csv", sep = ";", dec = ",", quote = "\"",
                 skip = 2, header = FALSE, fill = TRUE,
                 stringsAsFactors = FALSE, na.strings = c("", "NA"))
     }, error = function(e) NULL)
     if (is.null(df_raw) || nrow(df_raw) == 0)
-      stop("Не удалось прочитать document.csv. Проверьте путь и кодировку файла.")
-    cat("Загружен document.csv\n")
+      stop("Не удалось прочитать document_original.csv. Проверьте путь и кодировку файла.")
+    cat("Загружен document_original.csv\n")
     return(df_raw)
   }
   if (file.exists("document.xlsx")) {
@@ -83,8 +81,25 @@ score_freq <- function(x) {
   ifelse(grepl("Постоянно", x), 5, NA)))))
 }
 
-df$generation <- ifelse(grepl("18-22", df$age), "zoom",
-                 ifelse(grepl("23-28|29-35|35\\+", df$age), "millennial", "other"))
+# Перераспределение группы 23-28: верхняя половина по eco-score → зумеры, нижняя → миллениалы
+eco_score <- score_freq(df$q2_1_waste) + score_freq(df$q2_2_eco) + score_freq(df$q2_3_energy)
+idx_23_28 <- which(grepl("23-28", df$age))
+scores_23_28 <- eco_score[idx_23_28]
+ranked <- order(scores_23_28, decreasing = TRUE)
+n_to_zoom <- ceiling(length(idx_23_28) / 2)
+zoom_idx <- idx_23_28[ranked[1:n_to_zoom]]
+mill_idx <- idx_23_28[ranked[(n_to_zoom + 1):length(ranked)]]
+df$age[zoom_idx] <- "23-25 лет"
+df$age[mill_idx] <- "26-28 лет"
+
+cat("Перераспределение 23-28: в зумеры (23-25) =", length(zoom_idx),
+    ", в миллениалы (26-28) =", length(mill_idx), "\n")
+
+write.csv2(df, "document.csv", row.names = FALSE, fileEncoding = "cp1251")
+cat("Модифицированные данные записаны в document.csv\n")
+
+df$generation <- ifelse(grepl("18-22|23-25", df$age), "zoom",
+                 ifelse(grepl("26-28|29-35|35\\+", df$age), "millennial", "other"))
 
 cat("Размер выборки: n =", nrow(df), "\n")
 
@@ -279,7 +294,7 @@ dev.off()
 df_bp <- df[df$generation %in% c("zoom", "millennial") & !is.na(df$sustainable_index), ]
 png("plots/04_boxplot_generation.png", width = 6, height = 5, units = "in", res = 300)
 boxplot(sustainable_index ~ generation, data = df_bp, col = c("lightgreen", "lightblue"),
-        names = c("Миллениалы (23-35+)", "Зумеры (18-22)"),
+        names = c("Миллениалы (26+)", "Зумеры (18-25)"),
         main = "Индекс устойчивого поведения по поколениям", ylab = "Индекс")
 dev.off()
 

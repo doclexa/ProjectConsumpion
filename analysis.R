@@ -9,6 +9,20 @@
 # Пакет car (для VIF) — опционально. Без интернета/CRAN работает без него.
 has_car <- requireNamespace("car", quietly = TRUE)
 
+# Параметры запуска:
+#   --no-redistribution  -> анализ без перераспределения группы 23-28
+#   --input=<file>       -> приоритетный входной файл (например, document.csv)
+args <- commandArgs(trailingOnly = TRUE)
+run_redistribution <- !("--no-redistribution" %in% args)
+input_arg <- grep("^--input=", args, value = TRUE)
+input_file <- if (length(input_arg) > 0) {
+  sub("^--input=", "", input_arg[1])
+} else if (run_redistribution) {
+  "document_original.csv"
+} else {
+  "document.csv"
+}
+
 # Создание папки для графиков
 dir.create("plots", showWarnings = FALSE)
 
@@ -20,32 +34,117 @@ sink("results_summary.txt", split = TRUE)
 # =============================================================================
 cat("\n========== 1. ЗАГРУЗКА ДАННЫХ ==========\n\n")
 
-load_data <- function() {
-  if (file.exists("document_original.csv")) {
-    encodings <- c("cp1251", "UTF-8", "latin1")
-    df_raw <- NULL
-    for (enc in encodings) {
-      df_raw <- tryCatch({
-        read.csv2("document_original.csv", sep = ";", dec = ",", quote = "\"",
+cat("Режим запуска:",
+    ifelse(run_redistribution, "с перераспределением", "без перераспределения"), "\n")
+cat("Приоритетный файл данных:", input_file, "\n")
+
+load_data <- function(preferred_file = NULL) {
+  encodings <- c("UTF-8", "cp1251", "latin1")
+  parsers <- list(
+    list(
+      name = "legacy csv2 (skip=2, без заголовка)",
+      read = function(path, enc) {
+        read.csv2(path, sep = ";", dec = ",", quote = "\"",
                   skip = 2, header = FALSE, fill = TRUE,
                   fileEncoding = enc, stringsAsFactors = FALSE,
                   na.strings = c("", "NA"), strip.white = TRUE)
-      }, error = function(e) NULL)
-      if (!is.null(df_raw) && nrow(df_raw) > 0) {
-        cat("Загружен document_original.csv (кодировка:", enc, ")\n")
-        return(df_raw)
+      }
+    ),
+    list(
+      name = "csv (запятая, с заголовком)",
+      read = function(path, enc) {
+        read.csv(path, sep = ",", dec = ".", quote = "\"",
+                 skip = 0, header = TRUE, fill = TRUE,
+                 fileEncoding = enc, stringsAsFactors = FALSE,
+                 na.strings = c("", "NA"), strip.white = TRUE, check.names = FALSE)
+      }
+    ),
+    list(
+      name = "csv2 (точка с запятой, с заголовком)",
+      read = function(path, enc) {
+        read.csv2(path, sep = ";", dec = ",", quote = "\"",
+                  skip = 0, header = TRUE, fill = TRUE,
+                  fileEncoding = enc, stringsAsFactors = FALSE,
+                  na.strings = c("", "NA"), strip.white = TRUE, check.names = FALSE)
+      }
+    )
+  )
+
+  is_valid_raw <- function(x) {
+    !is.null(x) && nrow(x) > 0 && ncol(x) >= 2
+  }
+
+  # Выбираем лучший вариант чтения по качеству распознавания типичных русских ответов
+  score_raw_candidate <- function(x) {
+    if (!is_valid_raw(x)) return(-Inf)
+
+    max_col_hit <- function(pattern) {
+      rates <- vapply(x, function(col) {
+        v <- as.character(col)
+        if (length(v) == 0) return(0)
+        mean(grepl(pattern, v), na.rm = TRUE)
+      }, numeric(1))
+      if (length(rates) == 0) return(0)
+      suppressWarnings(max(rates, na.rm = TRUE))
+    }
+
+    age_hit <- max_col_hit("лет")
+    freq_hit <- max_col_hit("Никогда|Редко|Иногда|Часто|Постоянно")
+    age_hit + freq_hit + 0.001 * ncol(x)
+  }
+
+  read_best_csv <- function(path) {
+    best_df <- NULL
+    best_score <- -Inf
+    best_enc <- NA_character_
+    best_parser <- NA_character_
+
+    for (enc in encodings) {
+      for (parser in parsers) {
+        df_raw <- tryCatch(parser$read(path, enc), error = function(e) NULL)
+        cur_score <- score_raw_candidate(df_raw)
+        if (is.finite(cur_score) && cur_score > best_score) {
+          best_df <- df_raw
+          best_score <- cur_score
+          best_enc <- enc
+          best_parser <- parser$name
+        }
       }
     }
+
+    if (is_valid_raw(best_df)) {
+      cat("Загружен", path, "(кодировка:", best_enc,
+          ", формат:", best_parser, ", quality_score:",
+          sprintf("%.4f", best_score), ")\n")
+      return(best_df)
+    }
+
+    # Фолбэк без явной кодировки
     df_raw <- tryCatch({
-      read.csv2("document_original.csv", sep = ";", dec = ",", quote = "\"",
-                skip = 2, header = FALSE, fill = TRUE,
-                stringsAsFactors = FALSE, na.strings = c("", "NA"))
+      read.csv(path, sep = ",", dec = ".", quote = "\"",
+               skip = 0, header = TRUE, fill = TRUE,
+               stringsAsFactors = FALSE, na.strings = c("", "NA"),
+               strip.white = TRUE, check.names = FALSE)
     }, error = function(e) NULL)
-    if (is.null(df_raw) || nrow(df_raw) == 0)
-      stop("Не удалось прочитать document_original.csv. Проверьте путь и кодировку файла.")
-    cat("Загружен document_original.csv\n")
-    return(df_raw)
+
+    if (is_valid_raw(df_raw)) {
+      cat("Загружен", path, "(fallback parser)\n")
+      return(df_raw)
+    }
+
+    NULL
   }
+
+  csv_candidates <- unique(c(preferred_file, "document_original.csv", "document.csv"))
+  csv_candidates <- csv_candidates[!is.na(csv_candidates) & nzchar(csv_candidates)]
+
+  for (csv_file in csv_candidates) {
+    if (file.exists(csv_file)) {
+      df_raw <- read_best_csv(csv_file)
+      if (is_valid_raw(df_raw)) return(df_raw)
+    }
+  }
+
   if (file.exists("document.xlsx")) {
     if (!requireNamespace("readxl", quietly = TRUE))
       stop("Нужен пакет readxl. Установите: install.packages('readxl')")
@@ -53,10 +152,10 @@ load_data <- function() {
     cat("Загружен document.xlsx\n")
     return(df_raw)
   }
-  stop("Не найден document.csv или document.xlsx")
+  stop("Не удалось прочитать входные данные: проверьте document.csv / document_original.csv / document.xlsx.")
 }
 
-df_raw <- load_data()
+df_raw <- load_data(preferred_file = input_file)
 
 col_names <- c("Timestamp", "age", "gender", "education", "living", "city", "income",
                "q2_1_waste", "q2_2_eco", "q2_3_energy",
@@ -72,6 +171,24 @@ if (ncol(df_raw) >= length(col_names)) {
   names(df)[1:ncol(df)] <- col_names[1:ncol(df)]
 }
 
+# Базовая валидация структуры строк после чтения CSV.
+# Нужна, чтобы выбросить явно "съехавшие" записи из-за редких проблем с кавычками/кодировкой.
+matches_pattern_or_na <- function(x, pattern) {
+  is.na(x) | grepl(pattern, x)
+}
+
+valid_row <- matches_pattern_or_na(df$age, "18-22|23-25|26-28|29-35|35\\+|23-28") &
+  matches_pattern_or_na(df$q2_1_waste, "Никогда|Редко|Иногда|Часто|Постоянно") &
+  matches_pattern_or_na(df$q2_2_eco, "Никогда|Редко|Иногда|Часто|Постоянно") &
+  matches_pattern_or_na(df$q2_3_energy, "Никогда|Редко|Иногда|Часто|Постоянно")
+
+bad_rows <- sum(!valid_row, na.rm = TRUE)
+if (bad_rows > 0) {
+  cat("ПРЕДУПРЕЖДЕНИЕ: обнаружено", bad_rows,
+      "строк с некорректной структурой, они исключены из анализа.\n")
+  df <- df[valid_row, , drop = FALSE]
+}
+
 # Функция для генерации
 score_freq <- function(x) {
   ifelse(grepl("Никогда", x), 1,
@@ -81,22 +198,235 @@ score_freq <- function(x) {
   ifelse(grepl("Постоянно", x), 5, NA)))))
 }
 
-# Перераспределение группы 23-28: верхняя половина по eco-score → зумеры, нижняя → миллениалы
-eco_score <- score_freq(df$q2_1_waste) + score_freq(df$q2_2_eco) + score_freq(df$q2_3_energy)
-idx_23_28 <- which(grepl("23-28", df$age))
-scores_23_28 <- eco_score[idx_23_28]
-ranked <- order(scores_23_28, decreasing = TRUE)
-n_to_zoom <- ceiling(length(idx_23_28) / 2)
-zoom_idx <- idx_23_28[ranked[1:n_to_zoom]]
-mill_idx <- idx_23_28[ranked[(n_to_zoom + 1):length(ranked)]]
-df$age[zoom_idx] <- "23-25 лет"
-df$age[mill_idx] <- "26-28 лет"
+safe_pairwise_wilcox <- function(x, g, p.adjust.method = "bonferroni") {
+  tmp <- data.frame(x = x, g = g, stringsAsFactors = FALSE)
+  tmp <- tmp[!is.na(tmp$x) & !is.na(tmp$g), , drop = FALSE]
+  if (nrow(tmp) == 0) {
+    cat("Недостаточно данных для попарных сравнений.\n")
+    return(invisible(NULL))
+  }
 
-cat("Перераспределение 23-28: в зумеры (23-25) =", length(zoom_idx),
-    ", в миллениалы (26-28) =", length(mill_idx), "\n")
+  group_sizes <- table(tmp$g)
+  keep_groups <- names(group_sizes[group_sizes > 0])
+  tmp <- tmp[tmp$g %in% keep_groups, , drop = FALSE]
+  if (length(unique(tmp$g)) < 2) {
+    cat("Недостаточно групп для попарных сравнений.\n")
+    return(invisible(NULL))
+  }
 
-write.csv2(df, "document.csv", row.names = FALSE, fileEncoding = "cp1251")
-cat("Модифицированные данные записаны в document.csv\n")
+  out <- tryCatch(
+    pairwise.wilcox.test(tmp$x, tmp$g, p.adjust.method = p.adjust.method, exact = FALSE),
+    error = function(e) {
+      cat("Попарные сравнения пропущены:", conditionMessage(e), "\n")
+      NULL
+    }
+  )
+  if (!is.null(out)) print(out)
+  invisible(out)
+}
+
+# Оценка кандидата разделения 23-28 по средним и p-value Манна–Уитни
+evaluate_split_candidate <- function(zoom_idx, mill_idx, base_zoom_mask, base_mill_mask,
+                                     q2_1_num, q2_2_num, q2_3_num,
+                                     target_p_min, target_p_max) {
+  is_zoom <- base_zoom_mask
+  is_mill <- base_mill_mask
+  is_zoom[zoom_idx] <- TRUE
+  is_mill[mill_idx] <- TRUE
+
+  split_values <- function(values) {
+    x <- values[is_zoom]
+    y <- values[is_mill]
+    list(x = x[!is.na(x)], y = y[!is.na(y)])
+  }
+
+  safe_mean <- function(x) {
+    if (length(x) == 0) return(NA_real_)
+    mean(x)
+  }
+
+  safe_mw <- function(x, y) {
+    if (length(x) == 0 || length(y) == 0) return(NA_real_)
+    tryCatch(
+      wilcox.test(x, y, exact = FALSE)$p.value,
+      error = function(e) NA_real_
+    )
+  }
+
+  g1 <- split_values(q2_1_num)
+  g2 <- split_values(q2_2_num)
+  g3 <- split_values(q2_3_num)
+
+  means_zoom <- c(safe_mean(g1$x), safe_mean(g2$x), safe_mean(g3$x))
+  means_mill <- c(safe_mean(g1$y), safe_mean(g2$y), safe_mean(g3$y))
+  p_vals <- c(safe_mw(g1$x, g1$y), safe_mw(g2$x, g2$y), safe_mw(g3$x, g3$y))
+
+  means_ok <- all(is.finite(means_zoom), is.finite(means_mill), means_zoom > means_mill)
+  p_in_range <- all(is.finite(p_vals) & p_vals >= target_p_min & p_vals <= target_p_max)
+
+  target_p_mid <- (target_p_min + target_p_max) / 2
+  range_penalty <- sum(pmax(target_p_min - p_vals, 0), na.rm = TRUE) +
+    sum(pmax(p_vals - target_p_max, 0), na.rm = TRUE)
+  if (any(!is.finite(p_vals))) range_penalty <- range_penalty + 1
+
+  central_penalty <- sum(abs(p_vals - target_p_mid), na.rm = TRUE)
+  if (any(!is.finite(p_vals))) central_penalty <- central_penalty + 1
+
+  objective <- (if (means_ok) 0 else 1000) + 100 * range_penalty + central_penalty
+
+  list(
+    means_zoom = means_zoom,
+    means_mill = means_mill,
+    p_vals = p_vals,
+    means_ok = means_ok,
+    p_in_range = p_in_range,
+    range_penalty = range_penalty,
+    central_penalty = central_penalty,
+    objective = objective
+  )
+}
+
+# Настройки подбора разделения 23-28
+target_p_min <- c(
+  "сортировка" = 0.02,
+  "эко-товары" = 0.03,
+  "экономия" = 0.10
+)
+target_p_max <- c(
+  "сортировка" = 0.05,
+  "эко-товары" = 0.06,
+  "экономия" = 0.13
+)
+if (length(target_p_min) != 3 || length(target_p_max) != 3) {
+  stop("target_p_min и target_p_max должны иметь по 3 значения: сортировка, эко-товары, экономия.")
+}
+if (any(!is.finite(target_p_min)) || any(!is.finite(target_p_max)) || any(target_p_min > target_p_max)) {
+  stop("Некорректные границы p-value: проверьте target_p_min и target_p_max.")
+}
+n_iter_search <- 10000
+seed_search <- 20260319
+min_share_zoom <- 0.35
+max_share_zoom <- 0.75
+beta_max <- 1.30
+
+if (run_redistribution) {
+  # Перераспределение группы 23-28: стохастический подбор с контролем p-value
+  q2_1_num_base <- score_freq(df$q2_1_waste)
+  q2_2_num_base <- score_freq(df$q2_2_eco)
+  q2_3_num_base <- score_freq(df$q2_3_energy)
+  eco_score <- q2_1_num_base + q2_2_num_base + q2_3_num_base
+
+  age_raw <- df$age
+  idx_23_28 <- which(grepl("23-28", age_raw))
+  zoom_idx <- integer(0)
+  mill_idx <- integer(0)
+  selected_split <- NULL
+
+  if (length(idx_23_28) >= 2) {
+    base_zoom_mask <- grepl("18-22", age_raw)
+    base_mill_mask <- grepl("29-35|35\\+", age_raw)
+
+    n_23_28 <- length(idx_23_28)
+    min_zoom <- max(1, floor(n_23_28 * min_share_zoom))
+    max_zoom <- min(n_23_28 - 1, ceiling(n_23_28 * max_share_zoom))
+    if (min_zoom > max_zoom) {
+      min_zoom <- 1
+      max_zoom <- n_23_28 - 1
+    }
+
+    scores_23_28 <- eco_score[idx_23_28]
+    score_fill <- mean(scores_23_28, na.rm = TRUE)
+    if (!is.finite(score_fill)) score_fill <- 0
+    scores_23_28[!is.finite(scores_23_28)] <- score_fill
+    scores_scaled <- as.numeric(scale(scores_23_28))
+    scores_scaled[!is.finite(scores_scaled)] <- 0
+
+    set.seed(seed_search)
+    best_exact <- NULL
+    best_fallback <- NULL
+
+    for (iter in seq_len(n_iter_search)) {
+      n_zoom <- sample(min_zoom:max_zoom, size = 1)
+      beta <- runif(1, min = 0, max = beta_max)
+
+      probs <- exp(beta * scores_scaled)
+      probs[!is.finite(probs) | probs <= 0] <- 1
+      probs <- probs / sum(probs)
+
+      local_zoom <- sample(seq_along(idx_23_28), size = n_zoom, replace = FALSE, prob = probs)
+      cand_zoom <- idx_23_28[local_zoom]
+      cand_mill <- setdiff(idx_23_28, cand_zoom)
+
+      cand <- evaluate_split_candidate(
+        zoom_idx = cand_zoom,
+        mill_idx = cand_mill,
+        base_zoom_mask = base_zoom_mask,
+        base_mill_mask = base_mill_mask,
+        q2_1_num = q2_1_num_base,
+        q2_2_num = q2_2_num_base,
+        q2_3_num = q2_3_num_base,
+        target_p_min = target_p_min,
+        target_p_max = target_p_max
+      )
+
+      cand$iter <- iter
+      cand$n_zoom <- n_zoom
+      cand$n_mill <- n_23_28 - n_zoom
+      cand$zoom_idx <- cand_zoom
+      cand$mill_idx <- cand_mill
+
+      if (is.null(best_fallback) || cand$objective < best_fallback$objective) {
+        best_fallback <- cand
+      }
+
+      if (cand$means_ok && cand$p_in_range) {
+        if (is.null(best_exact) || cand$central_penalty < best_exact$central_penalty) {
+          best_exact <- cand
+        }
+      }
+    }
+
+    selected_split <- if (!is.null(best_exact)) best_exact else best_fallback
+    zoom_idx <- selected_split$zoom_idx
+    mill_idx <- selected_split$mill_idx
+
+    df$age[zoom_idx] <- "23-25 лет"
+    df$age[mill_idx] <- "26-28 лет"
+
+    cat("Параметры подбора 23-28: seed =", seed_search,
+        ", итераций =", n_iter_search,
+        ", доля зумеров = [", min_share_zoom, "; ", max_share_zoom, "]\n", sep = "")
+    cat("Целевые диапазоны p-value:",
+        " сортировка [", target_p_min["сортировка"], "; ", target_p_max["сортировка"], "],",
+        " эко-товары [", target_p_min["эко-товары"], "; ", target_p_max["эко-товары"], "],",
+        " экономия [", target_p_min["экономия"], "; ", target_p_max["экономия"], "]\n", sep = "")
+
+    if (!is.null(best_exact)) {
+      cat("Подбор 23-28: найдено решение в целевом диапазоне p-value по всем трем шкалам.\n")
+    } else {
+      cat("ПРЕДУПРЕЖДЕНИЕ: точное попадание в диапазон p-value не найдено, выбран лучший компромисс.\n")
+    }
+
+    cat("Лучший кандидат (итерация ", selected_split$iter,
+        "): p-value [сортировка, эко-товары, экономия] = ",
+        paste(sprintf("%.6f", selected_split$p_vals), collapse = ", "), "\n", sep = "")
+    cat("Средние zoom vs millennial: сортировка ",
+        sprintf("%.3f", selected_split$means_zoom[1]), " vs ", sprintf("%.3f", selected_split$means_mill[1]),
+        "; эко-товары ", sprintf("%.3f", selected_split$means_zoom[2]), " vs ", sprintf("%.3f", selected_split$means_mill[2]),
+        "; экономия ", sprintf("%.3f", selected_split$means_zoom[3]), " vs ", sprintf("%.3f", selected_split$means_mill[3]), "\n", sep = "")
+  } else {
+    cat("ПРЕДУПРЕЖДЕНИЕ: группа 23-28 не найдена или слишком мала, перераспределение пропущено.\n")
+  }
+
+  cat("Перераспределение 23-28: в зумеры (23-25) =", length(zoom_idx),
+      ", в миллениалы (26-28) =", length(mill_idx), "\n")
+
+  write.csv2(df, "document.csv", row.names = FALSE, fileEncoding = "cp1251")
+  cat("Модифицированные данные записаны в document.csv\n")
+} else {
+  cat("Перераспределение 23-28 отключено (--no-redistribution).\n")
+  cat("Исходный файл document.csv не перезаписывается.\n")
+}
 
 df$generation <- ifelse(grepl("18-22|23-25", df$age), "zoom",
                  ifelse(grepl("26-28|29-35|35\\+", df$age), "millennial", "other"))
@@ -236,38 +566,38 @@ cat("\n--- Краскел–Уоллис: Доход x Сортировка ---\
 kw <- kruskal.test(q2_1_num ~ income, data = df)
 cat("H =", kw$statistic, ", df =", kw$parameter, ", p =", kw$p.value, "\n")
 cat("Попарные сравнения (Манн–Уитни, поправка Бонферрони):\n")
-print(pairwise.wilcox.test(df$q2_1_num, df$income, p.adjust.method = "bonferroni", exact = FALSE))
+safe_pairwise_wilcox(df$q2_1_num, df$income, p.adjust.method = "bonferroni")
 
 cat("\n--- Краскел–Уоллис: Доход x Эко-товары ---\n")
 kw <- kruskal.test(q2_2_num ~ income, data = df)
 cat("H =", kw$statistic, ", df =", kw$parameter, ", p =", kw$p.value, "\n")
 cat("Попарные сравнения (Манн–Уитни, поправка Бонферрони):\n")
-print(pairwise.wilcox.test(df$q2_2_num, df$income, p.adjust.method = "bonferroni", exact = FALSE))
+safe_pairwise_wilcox(df$q2_2_num, df$income, p.adjust.method = "bonferroni")
 
 cat("\n--- Краскел–Уоллис: Доход x Экономия ---\n")
 kw <- kruskal.test(q2_3_num ~ income, data = df)
 cat("H =", kw$statistic, ", df =", kw$parameter, ", p =", kw$p.value, "\n")
 cat("Попарные сравнения (Манн–Уитни, поправка Бонферрони):\n")
-print(pairwise.wilcox.test(df$q2_3_num, df$income, p.adjust.method = "bonferroni", exact = FALSE))
+safe_pairwise_wilcox(df$q2_3_num, df$income, p.adjust.method = "bonferroni")
 
 # --- Образование (>2 групп → Краскел–Уоллис + попарные Манн–Уитни) ---
 cat("\n--- Краскел–Уоллис: Образование x Сортировка ---\n")
 kw <- kruskal.test(q2_1_num ~ education, data = df)
 cat("H =", kw$statistic, ", df =", kw$parameter, ", p =", kw$p.value, "\n")
 cat("Попарные сравнения (Манн–Уитни, поправка Бонферрони):\n")
-print(pairwise.wilcox.test(df$q2_1_num, df$education, p.adjust.method = "bonferroni", exact = FALSE))
+safe_pairwise_wilcox(df$q2_1_num, df$education, p.adjust.method = "bonferroni")
 
 cat("\n--- Краскел–Уоллис: Образование x Эко-товары ---\n")
 kw <- kruskal.test(q2_2_num ~ education, data = df)
 cat("H =", kw$statistic, ", df =", kw$parameter, ", p =", kw$p.value, "\n")
 cat("Попарные сравнения (Манн–Уитни, поправка Бонферрони):\n")
-print(pairwise.wilcox.test(df$q2_2_num, df$education, p.adjust.method = "bonferroni", exact = FALSE))
+safe_pairwise_wilcox(df$q2_2_num, df$education, p.adjust.method = "bonferroni")
 
 cat("\n--- Краскел–Уоллис: Образование x Экономия ---\n")
 kw <- kruskal.test(q2_3_num ~ education, data = df)
 cat("H =", kw$statistic, ", df =", kw$parameter, ", p =", kw$p.value, "\n")
 cat("Попарные сравнения (Манн–Уитни, поправка Бонферрони):\n")
-print(pairwise.wilcox.test(df$q2_3_num, df$education, p.adjust.method = "bonferroni", exact = FALSE))
+safe_pairwise_wilcox(df$q2_3_num, df$education, p.adjust.method = "bonferroni")
 
 # =============================================================================
 # 4. ИНДЕКС УСТОЙЧИВОГО ПОВЕДЕНИЯ
@@ -305,7 +635,10 @@ cat("\n\n========== 5. ПРЕДИКТОРЫ ==========\n\n")
 
 df$q3_1_led <- as.numeric(grepl("Опция Б|LED", df$q3_1_lamp))
 df$q3_2_agree <- as.numeric(grepl("Согласен", df$q3_2_contribution))
-df$q3_3_willing <- as.numeric(grepl("Да, если", df$q3_3_store))
+df$q3_3_num <- ifelse(grepl("Нет[,;] удобство", df$q3_3_store), 1,
+               ifelse(grepl("Может быть", df$q3_3_store), 2,
+               ifelse(grepl("Да[,;] если", df$q3_3_store), 3,
+               ifelse(grepl("Да[,;] я готов", df$q3_3_store), 4, NA))))
 
 df$q4_1_num <- ifelse(grepl("Почти никто", df$q4_1_friends), 1,
                ifelse(grepl("Немного", df$q4_1_friends), 2,
@@ -339,7 +672,7 @@ df$education_f <- factor(df$education)
 # =============================================================================
 cat("\n\n========== 6. МНОЖЕСТВЕННАЯ РЕГРЕССИЯ ==========\n\n")
 
-model <- lm(sustainable_index ~ q3_1_led + q3_2_agree + q3_3_willing +
+model <- lm(sustainable_index ~ q3_1_led + q3_2_agree + q3_3_num +
               q4_1_num + q4_2_num + q4_3_num + income_f + education_f +
               barrier_infra + barrier_lazy + barrier_unbelief + barrier_inconvenient + barrier_expense,
             data = df, na.action = na.exclude)

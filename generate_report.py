@@ -1,10 +1,11 @@
 """
 Расширенная аналитика: устойчивое потребление.
-Читает document.csv, выполняет 10 блоков анализа,
+Читает document.csv, выполняет 13 блоков анализа,
 генерирует единый report.html.
 """
 import io
 import base64
+import html
 import warnings
 from collections import Counter
 
@@ -72,6 +73,44 @@ def rank_biserial(u: float, n1: int, n2: int) -> float:
 
 def epsilon_squared(h: float, n: int) -> float:
     return h / (n - 1)
+
+
+def _ordinal_education(series: pd.Series) -> pd.Series:
+    """Порядковые коды образования (1 — ниже) для корреляции Спирмена с KW-блоком."""
+    def _one(x):
+        if pd.isna(x):
+            return np.nan
+        s = str(x)
+        if s.strip() == "Школа" or s.startswith("Школа"):
+            return 1.0
+        if "Среднее специальное" in s or "СПО" in s or "колледж" in s.lower():
+            return 2.0
+        if "бакалавриат" in s.lower():
+            return 3.0
+        if "магистратура" in s.lower() or "аспирантура" in s.lower():
+            return 4.0
+        return np.nan
+    return series.map(_one)
+
+
+def _ordinal_income(series: pd.Series) -> pd.Series:
+    """Порядковые коды субъективного дохода (1 — ниже) для корреляции Спирмена с KW-блоком."""
+    def _one(x):
+        if pd.isna(x):
+            return np.nan
+        s = str(x)
+        if "базовый рацион" in s.lower():
+            return 1.0
+        if "Хватает на еду" in s and "одежду" in s:
+            return 2.0
+        if "одежду" in s and "дорогие товары" in s:
+            return 3.0
+        if "комфортно" in s.lower() and "почти на все" in s:
+            return 4.0
+        if "всё, что захотим" in s or "все, что захотим" in s:
+            return 5.0
+        return np.nan
+    return series.map(_one)
 
 
 def effect_label(val: float, thresholds: tuple) -> str:
@@ -171,6 +210,39 @@ def load_data() -> pd.DataFrame:
         return np.nan
     df["q3_3_num"] = df["q3_3_store"].apply(_store)
 
+    def _consumption_num(x):
+        """Паттерн потребления Q3.4: 1 — устойчивый/минимальный, 4 — частая смена/статус (для рангов MW)."""
+        if pd.isna(x):
+            return np.nan
+        s = str(x)
+        if "Стараюсь не покупать лишнее" in s or "многоразов" in s:
+            return 1.0
+        if "редко" in s and "качественн" in s:
+            return 2.0
+        if "Затрудняюсь" in s or "зависит от ситуации" in s:
+            return 3.0
+        if "гаджет" in s or "статус" in s:
+            return 4.0
+        return np.nan
+
+    def _logic_num(x):
+        """Логика выбора Q3.5: 1 — расчёт, 4 — привычка/статус-кво (для рангов MW)."""
+        if pd.isna(x):
+            return np.nan
+        s = str(x)
+        if "логики и расч" in s or "посчитаю экономию" in s:
+            return 1.0
+        if "Зависит от товара" in s:
+            return 2.0
+        if "интуитивно" in s or "лишние расчёты" in s:
+            return 3.0
+        if "привык" in s:
+            return 4.0
+        return np.nan
+
+    df["q3_4_num"] = df["q3_4_consumption"].apply(_consumption_num)
+    df["q3_5_num"] = df["q3_5_logic"].apply(_logic_num)
+
     def _friends(x):
         s = str(x)
         if "Почти никто" in s: return 1
@@ -263,6 +335,20 @@ def section_effect_sizes(df: pd.DataFrame) -> str:
             eff = effect_label(eps2, (0.01, 0.06))
             rows_kw.append((f"{flabel} x {plabel}", f"{h:.2f}", f"{p:.4f}", f"{eps2:.4f}", eff))
 
+    rows_spear_kw = []
+    for fcol, flabel in [("income", "Доход"), ("education", "Образование")]:
+        x_ord = _ordinal_income(df[fcol]) if fcol == "income" else _ordinal_education(df[fcol])
+        for _, ncol, plabel in practices:
+            sub = pd.DataFrame({"x": x_ord, "y": df[ncol]}).dropna()
+            if len(sub) < 3:
+                rows_spear_kw.append((f"{flabel} x {plabel}", "—", "—", "—", None))
+                continue
+            rho, p_sp = stats.spearmanr(sub["x"], sub["y"])
+            eff_sp = effect_label(abs(float(rho)), (0.10, 0.30))
+            rows_spear_kw.append((
+                f"{flabel} x {plabel}", f"{rho:.3f}", f"{p_sp:.4f}", str(len(sub)), eff_sp,
+            ))
+
     all_effects = []
     for r in rows_chi:
         all_effects.append((r[0], "Cramer V", float(r[4])))
@@ -306,12 +392,22 @@ def section_effect_sizes(df: pd.DataFrame) -> str:
         f"<td><b>{r[3]}</b></td><td class='eff-{r[4]}'>{r[4]}</td></tr>"
         for r in rows_kw
     )
+    spear_kw_rows = ""
+    for r in rows_spear_kw:
+        eff_td = (
+            f"<td class='eff-{r[4]}'>{r[4]}</td>" if r[4] else "<td>—</td>")
+        spear_kw_rows += (
+            f"<tr><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td>{eff_td}</tr>")
 
     return f"""
     <div class="card" id="sect1">
       <h2>1. Размеры эффекта (Effect Sizes)</h2>
       <p class="method">Cramer's V для χ²-тестов, Rank-biserial r для Манна–Уитни,
-      ε² для Краскела–Уоллиса. Пороги: малый &lt;0.10, средний 0.10–0.30, большой &gt;0.30.</p>
+      ε² для Краскела–Уоллиса. Пороги для V и r: малый &lt;0.10, средний 0.10–0.30, большой &gt;0.30;
+      для ε²: малый &lt;0.01, средний 0.01–0.06, большой &gt;0.06.
+      Корреляция Спирмена (ρ) для тех же пар «доход/образование × практика»: факторы закодированы
+      порядковыми рангами (см. код), шкала практики — числовая q2_*_num; |ρ| интерпретируется
+      по тем же порогам, что и для V/r.</p>
       <div class="two-col">
         <div class="tables-col">
           <h3>Хи-квадрат → Cramer's V</h3>
@@ -320,6 +416,8 @@ def section_effect_sizes(df: pd.DataFrame) -> str:
           <table><tr><th>Тест</th><th>U</th><th>p</th><th>r</th><th>Эффект</th></tr>{mw_rows}</table>
           <h3>Краскела–Уоллиса → ε²</h3>
           <table><tr><th>Тест</th><th>H</th><th>p</th><th>ε²</th><th>Эффект</th></tr>{kw_rows}</table>
+          <h3>Спирмен (те же пары: доход/образование × практика)</h3>
+          <table><tr><th>Тест</th><th>ρ</th><th>p</th><th>N</th><th>Эффект (|ρ|)</th></tr>{spear_kw_rows}</table>
         </div>
         <div class="chart-col">
           <img src="data:image/png;base64,{img}" alt="Effect sizes">
@@ -1536,6 +1634,525 @@ def section_normality(df: pd.DataFrame) -> str:
     </div>"""
 
 
+def section_hypothesis1(df: pd.DataFrame) -> str:
+    """Проверка гипотезы 1: связь сценарной готовности и выбора лампы с индексом практик."""
+    # --- Spearman: готовность сменить магазин (q3_3_num) vs индекс ---
+    sub_sp = df[["q3_3_num", "sustainable_index"]].dropna()
+    if len(sub_sp) >= 3:
+        rho, p_rho = stats.spearmanr(sub_sp["q3_3_num"], sub_sp["sustainable_index"])
+        n_sp = len(sub_sp)
+        eff_sp = effect_label(abs(float(rho)), (0.10, 0.30))
+        spear_row = (
+            f"<tr><td>q3_3 (готовность к магазину) × индекс устойчивого поведения</td>"
+            f"<td><b>{rho:.3f}</b></td><td>{p_rho:.4f}</td><td>{n_sp}</td>"
+            f"<td class='eff-{eff_sp}'>{eff_sp}</td></tr>")
+        spear_insight = (
+            "Корреляция статистически значима (p &lt; 0.05) — с ростом готовности ходить в "
+            "эко-магазин индекс практик в среднем согласован с этой шкалой."
+            if p_rho < 0.05 else
+            "Связь готовности сменить магазин с индексом практик статистически не значима (p ≥ 0.05).")
+    else:
+        spear_row = (
+            "<tr><td colspan='5'>Недостаточно пар наблюдений для корреляции Спирмена.</td></tr>")
+        spear_insight = "Для корреляции Спирмена недостаточно данных."
+
+    # --- Средние индекса по уровням готовности сменить магазин (q3_3_num) ---
+    q3_store_labels = {
+        1: "Нет, удобство важнее",
+        2: "Может быть (при другой цене и т.п.)",
+        3: "Да, если часто ходить и ассортимент понравится",
+        4: "Да, готов(а) ходить дальше ради экологии",
+    }
+    means_q3_rows = []
+    if len(sub_sp) > 0:
+        for lev in sorted(sub_sp["q3_3_num"].dropna().unique()):
+            lev_i = int(lev) if float(lev).is_integer() else lev
+            grp = sub_sp.loc[sub_sp["q3_3_num"] == lev, "sustainable_index"]
+            if len(grp) == 0:
+                continue
+            lbl = q3_store_labels.get(int(lev_i), f"Уровень {lev_i}")
+            means_q3_rows.append(
+                f"<tr><td>{lbl}</td><td>{int(lev_i)}</td><td>{len(grp)}</td>"
+                f"<td><b>{float(grp.mean()):.2f}</b></td></tr>")
+    means_q3_html = (
+        "".join(means_q3_rows)
+        if means_q3_rows
+        else "<tr><td colspan='4'>Нет данных по q3_3_num.</td></tr>")
+
+    # --- Mann–Whitney: LED (опция Б) vs не-LED по индексу ---
+    sub_mw = df[["q3_1_led", "sustainable_index"]].dropna()
+    idx_a = sub_mw.loc[sub_mw["q3_1_led"] == 0, "sustainable_index"]
+    idx_b = sub_mw.loc[sub_mw["q3_1_led"] == 1, "sustainable_index"]
+    n_a, n_b = len(idx_a), len(idx_b)
+    if n_a >= 2 and n_b >= 2:
+        u_stat, p_u = stats.mannwhitneyu(idx_a, idx_b, alternative="two-sided")
+        r_bi = rank_biserial(u_stat, n_a, n_b)
+        eff_mw = effect_label(r_bi, (0.10, 0.30))
+        m_a, m_b = float(idx_a.mean()), float(idx_b.mean())
+        mw_row = (
+            f"<tr><td>Опция А (обычная лампа) vs опция Б (LED)</td>"
+            f"<td>{u_stat:.0f}</td><td>{p_u:.4f}</td><td>{r_bi:.3f}</td>"
+            f"<td class='eff-{eff_mw}'>{eff_mw}</td>"
+            f"<td>M={m_a:.2f} (n={n_a}) / M={m_b:.2f} (n={n_b})</td></tr>")
+        mw_insight = (
+            "Различие индекса между группами лампочки статистически значимо."
+            if p_u < 0.05 else
+            "Индекс практик значимо не различается между выбравшими LED и обычную лампу.")
+    else:
+        mw_row = (
+            "<tr><td colspan='6'>Недостаточно наблюдений в одной из групп для теста Манна–Уитни.</td></tr>")
+        mw_insight = "Для Манна–Уитни недостаточно данных в группах лампочки."
+
+    # --- Доли: экотовары (практика) vs сценарии магазин и лампа; разрывы в п.п. ---
+    eco_ser = df["q2_2_num"].dropna()
+    n_eco = len(eco_ser)
+    p_eco_pct = float((eco_ser >= 3).sum() / n_eco * 100) if n_eco else 0.0
+
+    store_ser = df["q3_3_num"].dropna()
+    n_store = len(store_ser)
+    p_store_pct = float((store_ser >= 3).sum() / n_store * 100) if n_store else 0.0
+
+    led_ser = df["q3_1_led"].dropna()
+    n_led = len(led_ser)
+    p_led_pct = float(led_ser.mean() * 100) if n_led else 0.0
+
+    gap_store_eco_pp = p_store_pct - p_eco_pct
+    gap_led_eco_pp = p_led_pct - p_eco_pct
+
+    gap_rows_html = (
+        f"<tr><td>Q2.2: хотя бы «Иногда» покупаю экотовары (шкала ≥ 3)</td>"
+        f"<td>{n_eco}</td><td><b>{p_eco_pct:.1f}%</b></td></tr>"
+        f"<tr><td>Q3.3: готовность сменить магазин — ответ «Да…» (q3_3_num ≥ 3)</td>"
+        f"<td>{n_store}</td><td><b>{p_store_pct:.1f}%</b></td></tr>"
+        f"<tr><td><i>Разрыв</i> (магазин − экотовары), п.п.</td><td>—</td>"
+        f"<td><b>{gap_store_eco_pp:+.1f}</b></td></tr>"
+        f"<tr><td>Q3.1: выбрана опция Б (долговечная LED-лампа)</td>"
+        f"<td>{n_led}</td><td><b>{p_led_pct:.1f}%</b></td></tr>"
+        f"<tr><td><i>Разрыв</i> (LED − экотовары), п.п.</td><td>—</td>"
+        f"<td><b>{gap_led_eco_pp:+.1f}</b></td></tr>")
+
+    if gap_store_eco_pp > 1:
+        gap_insight = (
+            f"Доля согласных сменить магазин (при валидном ответе) на {gap_store_eco_pp:.1f} п.п. "
+            f"выше доли тех, кто хотя бы иногда покупает экотовары — это иллюстрирует возможный "
+            f"«разрыв» между сценарной готовностью и отчётом о регулярной покупке экотоваров. ")
+    elif gap_store_eco_pp < -1:
+        gap_insight = (
+            f"Доля отчитывающихся о покупке экотоваров хотя бы иногда превышает долю ответов «Да» "
+            f"по магазину на {abs(gap_store_eco_pp):.1f} п.п. ")
+    else:
+        gap_insight = (
+            "Доли по магазину и экотоварам близки (разрыв в пределах ±1 п.п.). ")
+
+    if gap_led_eco_pp > 1:
+        gap_insight += (
+            f"Доля выбравших LED в сценарии выше доли «экотовары ≥ иногда» на {gap_led_eco_pp:.1f} п.п. "
+            f"(разные вопросы и базы n, сравнение ориентировочное).")
+    elif gap_led_eco_pp < -1:
+        gap_insight += (
+            f"Доля LED ниже доли экотовары ≥ иногда на {abs(gap_led_eco_pp):.1f} п.п.")
+    else:
+        gap_insight += " Доли LED и экотовары (≥иногда) близки по величине."
+
+    # --- Визуализация разрывов (доли) ---
+    fig_gap, (gx1, gx2) = plt.subplots(1, 2, figsize=(14, 4.8))
+    y1 = np.arange(2)
+    vals_ms = [p_eco_pct, p_store_pct]
+    bars1 = gx1.barh(y1, vals_ms, height=0.52, color=[PALETTE[2], PALETTE[0]],
+                     edgecolor="white", linewidth=1.2)
+    gx1.set_yticks(y1)
+    gx1.set_yticklabels(
+        ["Экотовары ≥ «Иногда»\n(Q2.2, практика)", "Готовность «Да…»\n(q3_3 ≥ 3, сценарий)"],
+        fontsize=10)
+    gx1.set_xlim(0, 105)
+    gx1.set_xlabel("% ответивших на вопрос")
+    gx1.set_title("Практика vs сценарий: магазин")
+    for i, v in enumerate(vals_ms):
+        gx1.text(v + 0.8, i, f"{v:.1f}%", va="center", fontsize=11, fontweight="bold")
+    gx1.annotate(
+        "", xy=(p_store_pct, 1), xytext=(p_eco_pct, 0),
+        arrowprops=dict(arrowstyle="<->", color="#2c3e50", lw=1.5))
+    gx1.text(
+        (p_eco_pct + p_store_pct) / 2, 0.5, f"Δ {gap_store_eco_pp:+.1f} п.п.",
+        ha="center", va="center", fontsize=10, color="#2c3e50",
+        bbox=dict(boxstyle="round,pad=0.35", facecolor="#fff9e6", edgecolor="#e6d08c"))
+
+    gx2.barh([0], [p_led_pct], height=0.45, color=PALETTE[1], edgecolor="white", linewidth=1.2)
+    gx2.axvline(p_eco_pct, color=PALETTE[2], linestyle="--", linewidth=2, alpha=0.85,
+                label=f"Экотовары ≥ иногда ({p_eco_pct:.1f}%)")
+    gx2.set_yticks([0])
+    gx2.set_yticklabels(["Опция Б (LED)\n(Q3.1, сценарий)"], fontsize=10)
+    gx2.set_xlim(0, 105)
+    gx2.set_xlabel("% ответивших на вопрос")
+    gx2.set_title("Сценарий: долговечная лампа")
+    gx2.text(p_led_pct + 0.8, 0, f"{p_led_pct:.1f}%", va="center", fontsize=11, fontweight="bold")
+    gx2.legend(loc="lower right", fontsize=9, framealpha=0.92)
+    gx2.text(
+        0.97, 0.08, f"К экотоварам: {gap_led_eco_pp:+.1f} п.п.",
+        transform=gx2.transAxes, ha="right", fontsize=10,
+        bbox=dict(boxstyle="round,pad=0.35", facecolor="#eef6ff", edgecolor="#4e79a7", alpha=0.95))
+    fig_gap.suptitle(
+        "Доли респондентов: сравнение отчёта о практике и сценарных выборов (разные базы n)",
+        fontsize=12, y=1.05)
+    fig_gap.tight_layout()
+    img_gap = fig_to_base64(fig_gap)
+
+    # --- Иллюстрация ---
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
+    ax1, ax2 = axes[0], axes[1]
+    if len(sub_sp) > 0:
+        for v in sorted(sub_sp["q3_3_num"].dropna().unique()):
+            pts = sub_sp.loc[sub_sp["q3_3_num"] == v, "sustainable_index"]
+            if len(pts) > 0:
+                jitter = np.random.default_rng(42).uniform(-0.12, 0.12, size=len(pts))
+                ax1.scatter(np.full(len(pts), v) + jitter, pts, alpha=0.35, s=22, c=PALETTE[0],
+                            edgecolors="white", linewidths=0.2)
+        ax1.set_xticks(sorted(sub_sp["q3_3_num"].unique()))
+        ax1.set_xlabel("q3_3_num (готовность к магазину)")
+        ax1.set_ylabel("Индекс устойчивого поведения")
+        ax1.set_title("Индекс vs готовность сменить магазин")
+    if n_a > 0 and n_b > 0:
+        bp = ax2.boxplot([idx_a.values, idx_b.values], positions=[0, 1], widths=0.55,
+                         patch_artist=True, labels=["Опция А", "Опция Б (LED)"])
+        bp["boxes"][0].set_facecolor(PALETTE[1])
+        bp["boxes"][1].set_facecolor(PALETTE[0])
+        for box in bp["boxes"]:
+            box.set_alpha(0.75)
+        ax2.set_ylabel("Индекс устойчивого поведения")
+        ax2.set_title("Индекс по выбору лампочки (сценарий q3.1)")
+    fig.suptitle("Гипотеза 1: сценарии и индекс регулярных практик", fontsize=14, y=1.02)
+    fig.tight_layout()
+    img = fig_to_base64(fig)
+
+    return f"""
+    <div class="card" id="sect11">
+      <h2>11. Проверка гипотезы 1</h2>
+      <p class="method">Связь сценарной готовности (шкала q3_3_store → q3_3_num) и индекса практик
+      (сумма частот по Q2.1–Q2.3); сравнение индекса между выбором долговечной (LED) и обычной лампы
+      в вопросе q3.1; <b>доли и разрывы в п.п.</b> между отчётом об экотоварах (Q2.2 ≥ «Иногда»),
+      ответами «Да…» по магазину (q3_3_num ≥ 3) и долей опции Б по лампочке — у каждого показателя
+      своя база n (все с ответом на соответствующий вопрос). Непараметрические тесты в духе отчёта.</p>
+
+      <h3>Корреляция Спирмена</h3>
+      <table>
+        <tr><th>Переменные</th><th>ρ</th><th>p</th><th>N</th><th>Эффект (|ρ|)</th></tr>
+        {spear_row}
+      </table>
+
+      <h3>Средний индекс по готовности сменить магазин (q3.3)</h3>
+      <p class="method">Та же подвыборка, что и для Спирмена (непустые q3_3_num и индекс).
+      Уровни q3_3_num соответствуют порядку ответов в анкете (см. кодировку в load_data).</p>
+      <table>
+        <tr><th>Смысл ответа</th><th>q3_3_num</th><th>n</th><th>M (индекс)</th></tr>
+        {means_q3_html}
+      </table>
+
+      <h3>Доли и разрыв: экотовары (практика) vs сценарии</h3>
+      <p class="method">Практика: q2_2_num ≥ 3 («Иногда», «Часто», «Постоянно»). Сценарий магазина: q3_3_num ≥ 3
+      (ответы «Да, если…» и «Да, готов…»). LED: доля q3_1_led = 1. Разрыв в процентных пунктах — разница долей
+      относительно линии сравнения по экотоварам.</p>
+      <table>
+        <tr><th>Показатель</th><th>n (ответов)</th><th>Доля</th></tr>
+        {gap_rows_html}
+      </table>
+      <div class="chart-center">
+        <img src="data:image/png;base64,{img_gap}" alt="Доли и разрыв практика vs сценарии">
+      </div>
+
+      <h3>Манна–Уитни: лампочка (q3.1) × индекс</h3>
+      <table>
+        <tr><th>Сравнение</th><th>U</th><th>p</th><th>Rank-biserial r</th><th>Эффект</th><th>Средние</th></tr>
+        {mw_row}
+      </table>
+
+      <div class="chart-center">
+        <img src="data:image/png;base64,{img}" alt="Hypothesis 1">
+      </div>
+
+      <div class="insight">
+        <b>Интерпретация:</b> {gap_insight} {spear_insight} {mw_insight}
+      </div>
+    </div>"""
+
+
+def _hyp2_sort_rows(index, factor_col: str):
+    idx_list = [x for x in list(index) if pd.notna(x)]
+    if factor_col == "income":
+        o = _ordinal_income(pd.Series(idx_list, dtype=object))
+        order = np.argsort(o.fillna(999).to_numpy())
+        return [idx_list[i] for i in order]
+    if factor_col == "education":
+        o = _ordinal_education(pd.Series(idx_list, dtype=object))
+        order = np.argsort(o.fillna(999).to_numpy())
+        return [idx_list[i] for i in order]
+    return sorted(idx_list, key=lambda x: str(x))
+
+
+def _hyp2_crosstab_html(df: pd.DataFrame, row_col: str, response_col: str, h4: str) -> str:
+    if response_col == "q3_3_store":
+        sub = df[[row_col, response_col, "q3_3_num"]].dropna(subset=[row_col, response_col])
+    else:
+        sub = df[[row_col, response_col]].dropna()
+    if len(sub) == 0:
+        return (
+            f"<h4>{html.escape(h4)}</h4>"
+            "<p class='method'>Нет парных наблюдений.</p>")
+    ct = pd.crosstab(sub[row_col], sub[response_col], margins=False)
+    row_order = _hyp2_sort_rows(ct.index, row_col)
+    row_order = [r for r in row_order if r in ct.index]
+    if response_col == "q3_3_store":
+        first_num = sub.groupby(response_col)["q3_3_num"].first()
+        col_order = sorted(
+            list(ct.columns), key=lambda c: (float(first_num.get(c, 99)), str(c)))
+    else:
+        col_order = sorted(list(ct.columns), key=lambda c: str(c))
+    ct = ct.reindex(index=row_order, columns=col_order, fill_value=0)
+    th_cols = "".join(f"<th>{html.escape(str(c))}</th>" for c in col_order)
+    body = []
+    for r in row_order:
+        row_sum = float(ct.loc[r].sum())
+        cells = []
+        for c in col_order:
+            v = int(ct.loc[r, c])
+            pct = 100.0 * v / row_sum if row_sum > 0 else 0.0
+            cells.append(f"<td>{v} <span style='color:#888'>({pct:.0f}%)</span></td>")
+        body.append(
+            f"<tr><th scope='row'>{html.escape(str(r))}</th>{''.join(cells)}</tr>")
+    return (
+        f"<h4>{html.escape(h4)}</h4>"
+        "<p class='method'>Ячейки: частота и доля в строке (%).</p>"
+        "<div style='overflow-x:auto'>"
+        "<table class='hyp2-cross'><tr><th></th>"
+        f"{th_cols}</tr>{''.join(body)}</table></div>")
+
+
+def _hyp2_spearman_rows(df: pd.DataFrame):
+    """Возвращает HTML-строки таблицы и список (лейбл, rho, p, n, eff) для вывода."""
+    pairs = [
+        ("Доход (порядк.) × Q3.1 выбор лампы (LED=1)", "income", "q3_1_led"),
+        ("Образование (порядк.) × Q3.1 выбор лампы (LED=1)", "education", "q3_1_led"),
+        ("Доход (порядк.) × Q3.2 согласие с «вкладом» (1=согласен)", "income", "q3_2_agree"),
+        ("Образование (порядк.) × Q3.2 согласие с «вкладом» (1=согласен)", "education", "q3_2_agree"),
+        ("Доход (порядк.) × Q3.3 готовность сменить магазин (q3_3_num)", "income", "q3_3_num"),
+        ("Образование (порядк.) × Q3.3 готовность сменить магазин (q3_3_num)", "education", "q3_3_num"),
+    ]
+    rows_html = []
+    results = []
+    for label, fcol, ycol in pairs:
+        x_ord = _ordinal_income(df[fcol]) if fcol == "income" else _ordinal_education(df[fcol])
+        sub = pd.DataFrame({"x": x_ord, "y": df[ycol]}).dropna()
+        if len(sub) < 3:
+            rows_html.append(
+                f"<tr><td>{html.escape(label)}</td><td>—</td><td>—</td><td>{len(sub)}</td><td>—</td></tr>")
+            results.append((label, np.nan, np.nan, len(sub), "—"))
+            continue
+        rho, p_sp = stats.spearmanr(sub["x"], sub["y"])
+        eff_sp = effect_label(abs(float(rho)), (0.10, 0.30))
+        results.append((label, float(rho), float(p_sp), len(sub), eff_sp))
+        rows_html.append(
+            f"<tr><td>{html.escape(label)}</td><td><b>{rho:.3f}</b></td><td>{p_sp:.4f}</td>"
+            f"<td>{len(sub)}</td><td class='eff-{eff_sp}'>{eff_sp}</td></tr>")
+    return "".join(rows_html), results
+
+
+def _hyp2_kruskal_rows(df: pd.DataFrame):
+    """Краскел–Уоллис по категориям дохода/образования (как раздел 1): сравнение q3_1_led, q3_2_agree, q3_3_num."""
+    practices_h2 = [
+        ("q3_1_led", "Q3.1 LED (0/1)"),
+        ("q3_2_agree", "Q3.2 согласие с вкладом (0/1)"),
+        ("q3_3_num", "Q3.3 готовность к магазину (q3_3_num)"),
+    ]
+    meta = []
+    parts = []
+    for fcol, flabel in [("income", "Доход"), ("education", "Образование")]:
+        for ncol, plabel in practices_h2:
+            groups = [g[ncol].dropna().values for _, g in df.groupby(fcol)]
+            groups = [g for g in groups if len(g) > 0]
+            label = f"{flabel} × {plabel}"
+            if len(groups) < 2:
+                meta.append((label, None, None, None, None))
+                parts.append(
+                    f"<tr><td>{html.escape(label)}</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>")
+                continue
+            try:
+                h, p = stats.kruskal(*groups)
+            except ValueError:
+                meta.append((label, None, None, None, None))
+                parts.append(
+                    f"<tr><td>{html.escape(label)}</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>")
+                continue
+            n_total = sum(len(g) for g in groups)
+            eps2 = epsilon_squared(h, n_total)
+            eff = effect_label(eps2, (0.01, 0.06))
+            meta.append((label, float(h), float(p), float(eps2), eff))
+            parts.append(
+                f"<tr><td>{html.escape(label)}</td><td>{h:.2f}</td><td>{p:.4f}</td>"
+                f"<td><b>{eps2:.4f}</b></td><td class='eff-{eff}'>{eff}</td></tr>")
+    return "".join(parts), meta
+
+
+def section_hypothesis2(df: pd.DataFrame) -> str:
+    """Гипотеза 2: когнитивные сценарии (Q3.1–Q3.3) и доход/образование — кросс-табуляции и Спирмен."""
+    blocks_cross = [
+        ("income", "q3_1_lamp", "Доход × Q3.1 (выбор лампы, текст ответа)"),
+        ("education", "q3_1_lamp", "Образование × Q3.1 (выбор лампы)"),
+        ("income", "q3_2_contribution", "Доход × Q3.2 (согласие с формулировкой про вклад)"),
+        ("education", "q3_2_contribution", "Образование × Q3.2 (вклад)"),
+        ("income", "q3_3_store", "Доход × Q3.3 (готовность сменить магазин)"),
+        ("education", "q3_3_store", "Образование × Q3.3 (магазин)"),
+    ]
+    cross_html = "".join(_hyp2_crosstab_html(df, rc, qc, h) for rc, qc, h in blocks_cross)
+
+    kw_rows_html, kw_meta = _hyp2_kruskal_rows(df)
+    kw_ok = [m for m in kw_meta if m[2] is not None]
+    kw_sig = [m for m in kw_ok if m[2] < 0.05]
+    max_eps2 = max((m[3] for m in kw_ok), default=0.0)
+
+    spear_rows, spear_meta = _hyp2_spearman_rows(df)
+    sig = [m for m in spear_meta if m[4] != "—" and m[2] == m[2] and m[2] < 0.05]
+    max_abs_rho = max(
+        (abs(m[1]) for m in spear_meta if m[1] == m[1]), default=0.0)
+    if not spear_meta or all(m[4] == "—" for m in spear_meta):
+        ins = "Недостаточно данных для корреляций Спирмена."
+    elif not sig:
+        ins = (
+            f"Ни одна из шести пар не даёт значимой связи (p ≥ 0.05) при n по строкам таблицы; "
+            f"наибольший |ρ| ≈ {max_abs_rho:.2f}. Это согласуется с идеей, что сценарные ответы "
+            f"Q3.1–Q3.3 слабо упорядочены с субъективным доходом и образованием.")
+    else:
+        ins = (
+            f"Значимые связи (p &lt; 0.05): {len(sig)} из 6. Наибольший |ρ| среди всех пар ≈ {max_abs_rho:.2f}. "
+            f"Интерпретацию стоит увязать с содержанием конкретных пунктов Q3.")
+
+    if not kw_ok:
+        ins_kw = " Краскел–Уоллис: для части факторов недостаточно непустых групп."
+    elif not kw_sig:
+        ins_kw = (
+            f" Краскел–Уоллис (как в п. 1): ни одна из шести постановок не даёт значимых различий между категориями дохода/образования (p ≥ 0.05); "
+            f"наибольшее ε² ≈ {max_eps2:.4f} (пороги ε²: малый &lt;0.01, средний 0.01–0.06, большой &gt;0.06).")
+    else:
+        ins_kw = (
+            f" Краскел–Уоллис: значимые различия между группами (p &lt; 0.05) в {len(kw_sig)} из 6 тестов; "
+            f"наибольшее ε² ≈ {max_eps2:.4f}.")
+
+    return f"""
+    <div class="card" id="sect12">
+      <h2>12. Проверка гипотезы 2</h2>
+      <p class="method">Гипотеза 2: когнитивные сценарии (временная близорукость — Q3.1 лампа; моральное лицензирование — Q3.2; статус-кво магазина — Q3.3)
+      рассматриваются совместно с <b>доходом</b> и <b>образованием</b>. Кросс-табуляции — по исходным категориям анкеты;
+      <b>Краскел–Уоллис</b> — по <b>исходным категориям</b> дохода/образования в анкете (как в п. 1 для практик Q2): в каждой группе фактора — числовой отклик q3_1_led, q3_2_agree или q3_3_num; эффект — ε² с теми же порогами, что в п. 1.
+      Корреляция Спирмена — между <b>порядковыми кодами</b> дохода/образования и теми же откликами.</p>
+
+      <h3>Кросс-табуляции</h3>
+      {cross_html}
+
+      <h3>Краскел–Уоллис → ε² (категории дохода/образования × отклик Q3)</h3>
+      <p class="method">Та же логика, что таблица «Краскела–Уоллиса» в разделе 1: независимые выборки значений отклика по каждой категории фактора.</p>
+      <table>
+        <tr><th>Тест</th><th>H</th><th>p</th><th>ε²</th><th>Эффект</th></tr>
+        {kw_rows_html}
+      </table>
+
+      <h3>Корреляция Спирмена (порядковый SES × числовой отклик)</h3>
+      <table>
+        <tr><th>Переменные</th><th>ρ</th><th>p</th><th>N</th><th>Эффект (|ρ|)</th></tr>
+        {spear_rows}
+      </table>
+      <p class="method">Пороги |ρ|: малый &lt;0.10, средний 0.10–0.30, большой &gt;0.30 (как в разделе 1).</p>
+
+      <div class="insight">
+        <b>Интерпретация:</b> {ins}{ins_kw}
+      </div>
+    </div>"""
+
+
+def section_hypothesis4(df: pd.DataFrame) -> str:
+    """Гипотеза 4: Зумеры vs миллениалы — Манн–Уитни по q3_4, q3_3, q3_5 (числовые шкалы)."""
+    df_gen = df[df["generation"].isin(["zoom", "millennial"])].copy()
+    zoom = df_gen[df_gen["generation"] == "zoom"]
+    mill = df_gen[df_gen["generation"] == "millennial"]
+    n_z, n_m = len(zoom), len(mill)
+
+    test_vars = [
+        ("q3_4_num", "Q3.4 Паттерн потребления (q3_4_num)"),
+        ("q3_3_num", "Q3.3 Готовность сменить магазин (q3_3_num)"),
+        ("q3_5_num", "Q3.5 Логика принятия решений (q3_5_num)"),
+    ]
+    mw_rows = []
+    for col, label in test_vars:
+        xz = zoom[col].dropna()
+        xm = mill[col].dropna()
+        if len(xz) < 2 or len(xm) < 2:
+            mw_rows.append((label, "—", "—", "—", "—", "—", "—"))
+            continue
+        u, p = stats.mannwhitneyu(xz, xm, alternative="two-sided")
+        r = rank_biserial(u, len(xz), len(xm))
+        eff = effect_label(r, (0.10, 0.30))
+        mw_rows.append((
+            label, f"{float(xz.mean()):.2f}", f"{float(xm.mean()):.2f}",
+            f"{u:.0f}", f"{p:.4f}", f"{r:.3f}", eff))
+
+    mw_html = ""
+    for r in mw_rows:
+        p_str = r[4]
+        is_sig = p_str != "—" and float(p_str) < 0.05
+        bo, bc = ("<b>", "</b>") if is_sig else ("", "")
+        mw_html += (
+            f"<tr><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td>"
+            f"<td>{bo}{r[4]}{bc}</td><td>{r[5]}</td><td class='eff-{r[6]}'>{r[6]}</td></tr>")
+
+    sig_n = sum(1 for r in mw_rows if r[4] != "—" and float(r[4]) < 0.05)
+    if sig_n == 0:
+        ins = (
+            f"Ни один из трёх тестов не выявил значимых различий рангов между зумерами и миллениалами (p ≥ 0.05). "
+            f"Гипотеза 4 в части этих пунктов анкеты на выборке n={n_z} и n={n_m} подтверждается слабо или не подтверждается.")
+    else:
+        ins = (
+            f"Значимые различия (p &lt; 0.05) в {sig_n} из 3 сравнений. Направление по средним рангам см. rank-biserial r "
+            f"(положительное r: у зумеров в среднем более высокие значения шкалы, чем у миллениалов).")
+
+    fig, ax = plt.subplots(figsize=(10, 4.2))
+    x = np.arange(len(test_vars))
+    w = 0.35
+    z_means = [zoom[c].mean() if len(zoom[c].dropna()) else np.nan for c, _ in test_vars]
+    m_means = [mill[c].mean() if len(mill[c].dropna()) else np.nan for c, _ in test_vars]
+    ax.bar(x - w / 2, z_means, w, label=f"Зумеры (n={n_z})", color=PALETTE[0], edgecolor="white")
+    ax.bar(x + w / 2, m_means, w, label=f"Миллениалы (n={n_m})", color=PALETTE[1], edgecolor="white")
+    ax.set_xticks(x)
+    ax.set_xticklabels(["Q3.4 паттерн", "Q3.3 магазин", "Q3.5 логика"], fontsize=11)
+    ax.set_ylabel("Среднее по шкале")
+    ax.set_title("Гипотеза 4: средние значения шкал по поколениям")
+    ax.legend(fontsize=10)
+    _finite = [v for v in z_means + m_means if v == v]
+    _top = max(_finite) * 1.15 if _finite else 1.0
+    ax.set_ylim(0, max(4.2, _top))
+    fig.tight_layout()
+    img = fig_to_base64(fig)
+
+    return f"""
+    <div class="card" id="sect13">
+      <h2>13. Проверка гипотезы 4 (межпоколенческие различия)</h2>
+      <p class="method">Гипотеза 4: поколение Z (18–25, зумеры) и миллениалы (26–35+) различаются по характеру сценариев Q3.4–Q3.5 и готовности сменить магазин (Q3.3).
+      Сравнение — <b>Манн–Уитни</b> для двух независимых выборок, как в п. 1 (зумеры vs миллениалы) и п. 3.
+      <b>Q3.3</b> — шкала q3_3_num (1–4), как в load_data. <b>Q3.4</b> закодирована в q3_4_num: 1 — минимальное/многоразовое потребление, 2 — редкие покупки качественных вещей, 3 — затруднение/зависит от ситуации, 4 — частые обновления/гаджеты и статус.
+      <b>Q3.5</b> — q3_5_num: 1 — выбор по логике и расчёту, 2 — зависит от товара, 3 — интуитивно/быстро, 4 — привычный выбор (статус-кво). Пороги rank-biserial r: малый &lt;0.10, средний 0.10–0.30, большой &gt;0.30.</p>
+
+      <h3>Манн–Уитни: зумеры vs миллениалы</h3>
+      <table>
+        <tr><th>Показатель</th><th>M (зумеры)</th><th>M (миллениалы)</th><th>U</th><th>p</th><th>r</th><th>Эффект</th></tr>
+        {mw_html}
+      </table>
+
+      <div class="chart-center">
+        <img src="data:image/png;base64,{img}" alt="Гипотеза 4: средние по поколениям">
+      </div>
+
+      <div class="insight">
+        <b>Интерпретация:</b> {ins}
+      </div>
+    </div>"""
+
+
 # ============================================================================
 # HTML-ШАБЛОН
 # ============================================================================
@@ -1605,6 +2222,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <a href="#sect8">8. Кластеры</a>
   <a href="#sect9">9. Барьеры</a>
   <a href="#sect10">10. Нормальность</a>
+  <a href="#sect11">11. Гипотеза 1</a>
+  <a href="#sect12">12. Гипотеза 2</a>
+  <a href="#sect13">13. Гипотеза 4</a>
 </nav>
 
 <div class="main">
@@ -1644,6 +2264,9 @@ def main():
         ("8. Clusters", section_clusters),
         ("9. Barriers", section_barriers),
         ("10. Normality", section_normality),
+        ("11. Hypothesis 1", section_hypothesis1),
+        ("12. Hypothesis 2", section_hypothesis2),
+        ("13. Hypothesis 4", section_hypothesis4),
     ]
 
     for name, func in section_funcs:
